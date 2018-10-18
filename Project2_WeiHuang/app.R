@@ -109,20 +109,12 @@ ui <- fluidPage(
 server <- function(input, output, session = session) {
   # Filtered cost and revenue data
   PGInput <- reactive({
-    playG <- playG
     
     #Build API Query with proper encodes
-    
-
-    
-    
-    #Load and clean data
-     # playG <- ckanSQL(url) %>%
-     #   mutate(date = as.Date(general_ledger_date))
-    
     #Build API Query with proper encodes
     #Load and clean data
-    url_1 <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22") #https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22
+    url_1 <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22%20WHERE%20%22name%22%20IN%20(27%",paste(input$ParkNameSelect,collapse = "27%,27%"),"27%)",
+    "%27%20AND%20%22ward%22%20%3E%3D",input$WardAmountSelect[1], "%20AND%20%22amount%22%20%3C%3D", input$WardAmountSelect[2],"%20;") #https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22
     ###
     playG <- ckanSQL(url_1) 
     
@@ -131,9 +123,9 @@ server <- function(input, output, session = session) {
   
   IMInput <- reactive({
     
-    url_2<- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22f86f1950-3b73-46f9-8bd4-2991ea99d7c4%22")
+    #url_2<- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22f86f1950-3b73-46f9-8bd4-2991ea99d7c4%22")
 
-    interM <- ckanSQL(url_2) 
+    interM <- readOGR("https://data.wprdc.org/dataset/31ce085b-87b9-4ffd-adbb-0a9f5b3cf3df/resource/f86f1950-3b73-46f9-8bd4-2991ea99d7c4/download/markingsimg.geojson") 
     
     return(interM)
   })

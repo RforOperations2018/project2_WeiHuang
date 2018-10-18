@@ -1,3 +1,4 @@
+#Project2
 
 library(shiny)
 library(httr)
@@ -6,7 +7,9 @@ library(dplyr)
 library(tidyr)
 library(rgdal)
 library(leaflet)
+library(leaflet.extras)
 library(shinythemes)
+library(plotly)
 
 # Function to pull ESRI data
 getEsri <- function(url) {
@@ -34,32 +37,41 @@ ckanSQL <- function(url) {
   # Create Dataframe
   data.frame(jsonlite::fromJSON(json)$result$records)
 }
+#load the polygons, lines and points for the map
+# url_1 <- URLencode("https%3A%2F%2Fdata.wprdc.org%2Fdataset%2F37e7a776-c98b-4e08-ad61-a8c8e23ec9ab%2Fresource%2F12d59d62-e86d-4f37-af19-463050496ed6%2Fdownload%2Fplaygrounds_img.geojson")
+# cities <- getEsriList(url_1)
+
 
 # pdf(NULL)
 # 
-# # Unique values for Resource Field
-# ckanUniques <- function(id, field) {
-#   url <- paste0("https://data.wprdc.org/api/action/datastore_search_sql?sql=SELECT%20DISTINCT(%22", field, "%22)%20from%20%22", id, "%22")
-#   c(ckanSQL(URLencode(url)))
-# }
-# 
-# #Select unique data from website and turn it to list
-# types_date <- sort(ckanUniques("f61f6e8c-7b93-4df3-9935-4937899901c7", "general_ledger_date")$general_ledger_date) 
-# types_amount <-sort(ckanUniques("f61f6e8c-7b93-4df3-9935-4937899901c7", "amount")$amount)
+ # Unique values for Resource Field
+ # ckanUniques <- function(id, field) {
+ #   url <- paste0("https://data.wprdc.org/api/action/datastore_search_sql?sql=SELECT%20DISTINCT(%22", field, "%22)%20from%20%22", id, "%22")
+ #   c(ckanSQL(URLencode(url)))
+ # }
+ 
+ #Select unique data from website and turn it to list
+ 
+ # playG_ <- sort(ckanUniques("47350364-44a8-4d15-b6e0-5f79ddff9367", "latitude")$latitude)
 
-cost_rev_load <- read.csv("cost_rev.csv", header = TRUE)
-cost_rev_load$ledger_descrpition <- NULL
-
-cost_rev <- cost_rev_load %>% 
-  filter(grepl("2018", general_ledger_date) )  %>%
-  filter(grepl("GENERAL FUND", fund_description) |
-           grepl("CDBG FUND", fund_description) |
-           grepl("ARAD-PUBLIC WORKS", fund_description)) %>%
-  mutate(types_amount = as.numeric(amount),
-         department_name = as.character(department_name),
-         date_2018 = as.Date(general_ledger_date, "%Y-%m-%d"),
-         cost_center_description = as.character(cost_center_description),
-         fund = as.character(fund_description))
+ 
+### method for cleaning the dataset
+ playG_load <- read.csv("playground.csv", header = TRUE)
+ playG_load$type <- NA
+ 
+ playG <- playG_load %>% 
+   mutate(name = as.character(name),
+          maintenance = as.character(maintenance_responsibility),
+          park = as.character(park),
+          neighborhood = as.character(neighborhood),
+          ward = as.numeric(ward),
+          latitude = as.numeric(latitude),
+          longitude = as.numeric(longitude),
+          publicWD = as.numeric(public_works_division))
+ waterF_load <- read.csv("water_feature.csv", header = TRUE) 
+ waterF <- waterF_load %>%
+   mutate(control_type = as.character(control_type),
+          feater_type = as.character(feature_type))
 
 # Define UI for application 
 ui <- fluidPage(
@@ -70,16 +82,36 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       # General ledger Date Select
-      dateRangeInput("DateSelect",
-                     "date",
-                     start = Sys.Date()-30,
-                     end = Sys.Date()),
-      sliderInput("AmountSelect",
-                  "amount:",
-                  min = min(cost_rev$types_amount, na.rm = T),
-                  max = max(cost_rev$types_amount, na.rm = T),
-                  value = c(min(cost_rev$types_amount, na.rm = T), max(cost_rev$types_amount, na.rm = T)),
-                  step = 50),
+      # dateRangeInput("DateSelect",
+      #                "date",
+      #                start = Sys.Date()-30,
+      #                end = Sys.Date()),
+      selectInput("ParkNameSelect",
+                  "park name:",
+                  choices = sort(unique(playG$name)),
+                  multiple = TRUE,
+                  selectize = TRUE,
+                  selected = c("Arlington Playground","Bon Air Playground","Camp David Lawrence Playground")),
+      
+      selectInput("NeighborhoodSelect",
+                  "neighborhood:",
+                  choices = sort(unique(playG$neighborhood)),
+                  multiple = TRUE,
+                  selectize = TRUE,
+                  selected = c("South Side Slopes","Brookline","Strip District")),
+      
+      sliderInput("WardAmountSelect",
+                  "ward amount:",
+                  min = min(playG$ward, na.rm = T),
+                  max = max(playG$ward, na.rm = T),
+                  value = c(min(playG$ward, na.rm = T), max(playG$ward, na.rm = T)),
+                  step = 1),
+      
+      checkboxGroupInput("ControlTypeSelect",
+                         "control type:",
+                         choices = sort(unique(waterF$control_type)),
+                         selected = c("ON/OFF", "Continuous")),
+      
       actionButton("reset", "Reset Filters", icon = icon("refresh"))
     ),
     # Tabset Main Panel
@@ -88,7 +120,8 @@ ui <- fluidPage(
         tabPanel("Plot",
                  plotlyOutput("barplot"),
                  plotlyOutput("boxplot"),
-                 plotlyOutput("pointsplot")
+                 plotlyOutput("pointsplot"),
+                 leafletOutput("map")
         ),
         tabPanel("Table",
                  DT::dataTableOutput("table"))
@@ -100,52 +133,80 @@ ui <- fluidPage(
 # Define server logic
 server <- function(input, output, session = session) {
   # Filtered cost and revenue data
-  crInput <- reactive({
-    cost_rev <- cost_rev %>%
-      mutate(date = as.Date(general_ledger_date))
+  PGInput <- reactive({
+    playG <- playG 
+   
+    
     #Build API Query with proper encodes
     
-    # url <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22f61f6e8c-7b93-4df3-9935-4937899901c7%22%20WHERE%20%22general_ledger_date%22%20%3E=%20%27",
-    #               input$DateSelect[1],"%27%20AND%20%22general_ledger_date%22%20%3C=%20%27",input$DateSelect[2],
-    #               "%27%20AND%20%22amount%22%20%3E%3D", input$AmountSelect[1], "%20AND%20%22amount%22%20%3C%3D", input$AmountSelect[2],"%20;")
-    # 
+    #  url <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22f61f6e8c-7b93-4df3-9935-4937899901c7%22%20WHERE%20%22general_ledger_date%22%20%3E=%20%27",
+    #                input$DateSelect[1],"%27%20AND%20%22general_ledger_date%22%20%3C=%20%27",input$DateSelect[2],
+    #                "%27%20AND%20%22amount%22%20%3E%3D", input$AmountSelect[1], "%20AND%20%22amount%22%20%3C%3D", input$AmountSelect[2],"%20;")
+    # # 
     
     
     # #Load and clean data
-    # cost_rev <- ckanSQL(url) %>%
-    #   mutate(date = as.Date(general_ledger_date))
+     # playG <- ckanSQL(url) %>%
+     #   mutate(date = as.Date(general_ledger_date))
     
     
-    return(cost_rev)
+    return(playG)
     
+  })
+  WFInput <- reactive({
+    waterF <- waterF
+    
+    return(waterF)
   })
   
-  # Three bars are showing the number of the three chosen department
+  # Output Map
+  output$map < renderLeaflet({
+    sp1 <- PGInput()
+    sp2 <- WFInput()
+    #Call Data and Build Map
+    leaflet() %>%
+      #Increat basemaps, the OpenStreet Map and the BalckAndWhite Map, and then create bottoms for choosing between two maps
+      addTiles(group = "OpenStreetMap.Mapnik(default)") %>%
+      addProviderTiles("OpenStreetMap.BlackAndWhite", group = "BW") %>%
+      addLayersControl(baseGroups = c("OpenStreetMap.Mapnik(default)", "BW"),
+                       options = layersControlOptions(collapsed = FALSE)) %>%
+      #Add polygons for Pttsburgh playgrounds
+      addPolygons(data = sp1, color = "#8DD3C7") %>%
+      #Add points depicting water features in Pittsburgh
+      addMarkers(data = sp2) %>%
+      #Add legends for types of intersection markings
+      # addLegend(position = "bottomright" , pal = pal5, values = interM.load$type, title = "Type") %>%
+      setView(-80, 40.45, 12)
+   })
+
+  
+  # Three bars are showing the number of the three chosen parks
   output$barplot <- renderPlotly({
-    cost_rev <- crInput()
+    playG <- PGInput()
     ggplotly(
-      ggplot(data = cost_rev, aes(x = department_name, fill = as.factor(department_name))) + 
+      ggplot(data = playG, aes(x = name, fill = as.factor(name))) + 
         geom_bar() +
-        labs(x = "Department Names", title = "Barplot for Department Name") +
+        labs(x = "Park Names", title = "Barplot for Park Name") +
         guides(color = FALSE))
   })
+  
   #Using box plots to show the distribution of the three chosen departments
   output$boxplot <- renderPlotly({
-    cost_rev <- crInput()
+    playG <- PGInput()
     ggplotly(
-      ggplot(data = cost_rev, aes(x = fund_description, y = as.numeric(amount))) + 
+      ggplot(data = playG, aes(x = neighborhood, y = as.numeric(ward))) + 
         geom_boxplot() +
-        labs(x = " Fund Category", y = "Cost Amount", title = "Boxplot for Department Names and Cost Amount") +
+        labs(x = " Neighborhood", y = "Ward Amount", title = "Boxplot for Neighborhood and Ward") +
         guides(color = FALSE))
   })
   
   # Using points plots to show the average amount of cost in each date
   
   output$pointsplot <- renderPlotly({
-    cost_rev <- crInput()
+    playG <- PGInput()
     ggplotly(
-      ggplot(data = cost_rev, aes(x = date, y = as.numeric(amount))) + 
-        labs(x = "Dates for Geberal Ledgers", y = "Cost Amount", title = "Points Plot for Dates and Cost Amounts") +
+      ggplot(data = playG, aes(x = maintenance, y = as.numeric(ward))) + 
+        labs(x = "Maintenance Responsibility", y = "Ward Amount", title = "Points Plot for Maintenance Responsibility and Ward Amounts") +
         geom_point())
   })
   
@@ -153,9 +214,10 @@ server <- function(input, output, session = session) {
   
   # Data Table
   output$table <- DT::renderDataTable({
-    cost_rev <- crInput()
+    playG <- PGInput()
     
-    subset(cost_rev, select = c(department_name, cost_center_description, general_ledger_date, amount))
+    subset(playG, select = c(name, neighborhood, ward))
+    subset(waterF, select = c(control_type))
   })
   # Updating the URL Bar
   observe({
@@ -171,13 +233,15 @@ server <- function(input, output, session = session) {
       paste("cost-revenue-", Sys.Date(), ".csv", sep="")
     },
     content = function(file) {
-      write.csv(crInput(), file)
+      write.csv(PGInput(), file)
     }
   )
   # Reset Filter Data
   observeEvent(input$reset, {
-    updateSelectInput(session, "DateSelect", selected = c("2018-10-12","2018-10-11","2018-10-09"))
-    updateSliderInput(session, "AmountSelect", value = c(min(types_amount, na.rm = T), max(types_amount, na.rm = T)))
+    updateSelectInput(session, "ParkNameSelect", selected = c("Arlington Playground","Bon Air Playground","Camp David Lawrence Playground"))
+    updateSelectInput(session, "NeighborhoodSelect", selected = c("South Side Slopes","Brighton Heights"))
+    updateSliderInput(session, "WardAmountSelect", value = c(min(ward, na.rm = T), max(ward, na.rm = T)))
+    updateCheckboxGroupInput(session, "ControlTypeSelect", selected = "ON/OFF")
     showNotification("You have successfully reset the filters", type = "message")
   })
 }

@@ -7,12 +7,8 @@ library(dplyr)
 library(tidyr)
 library(rgdal)
 library(leaflet)
-library(leaflet.extras)
 library(shinythemes)
 library(plotly)
-
-pal5 <- colorFactor(palette = c( "#E41A1C","#377EB8","#4DAF4A","#984EA3","#FF7F00","#FFFF33"), 
-                    domain = interM$type)
 
 
 ckanSQL <- function(url) {
@@ -38,42 +34,34 @@ pdf(NULL)
  
 
  playG_name <- sort(ckanUniques("47350364-44a8-4d15-b6e0-5f79ddff9367", "name")$name)
- playG_neighborhood <- sort(ckanUniques("47350364-44a8-4d15-b6e0-5f79ddff9367", "neighborhood")$neighborhood)
+ playG_maintenance <- sort(ckanUniques("47350364-44a8-4d15-b6e0-5f79ddff9367", "maintenance_responsibility")$maintenance)
  playG_ward <- sort(ckanUniques("47350364-44a8-4d15-b6e0-5f79ddff9367", "ward")$ward)
- interM_policeZ <- sort(ckanUniques("f86f1950-3b73-46f9-8bd4-2991ea99d7c4", "police_zone")$police_zone)
+ interM_load <- readOGR("https://data.wprdc.org/dataset/31ce085b-87b9-4ffd-adbb-0a9f5b3cf3df/resource/f86f1950-3b73-46f9-8bd4-2991ea99d7c4/download/markingsimg.geojson")
 
- 
- # interM <-  readOGR("https://data.wprdc.org/dataset/31ce085b-87b9-4ffd-adbb-0a9f5b3cf3df/resource/f86f1950-3b73-46f9-8bd4-2991ea99d7c4/download/markingsimg.geojson")
- # 
- 
- # waterF_load <- read.csv("water_feature.csv", header = TRUE) 
- # waterF <- waterF_load %>%
- #   mutate(control_type = as.character(control_type),
- #          feater_type = as.character(feature_type))
- 
+ pal5 <- colorFactor(palette = c( "#E41A1C","#377EB8","#4DAF4A","#984EA3","#FF7F00","#FFFF33"),domain = interM_load$type)
 
 # Define UI for application 
 ui <- fluidPage(
   #Application title
-  titlePanel("City Wide Revenues and Expenses"), 
+  titlePanel("Pittsburgh Playground and Intersection Markings"), 
   
   #Design sider bar
   sidebarLayout(
     sidebarPanel(
     
-      selectInput("ParkNameSelect",
-                  "park name:",
+      selectInput("PlaygroundNameSelect",
+                  "playground name:",
                   choices =  playG_name,
                   multiple = TRUE,
                   selectize = TRUE,
-                  selected = c("Arlington Playground","Bon Air Playground","Camp David Lawrence Playground")),
+                  selected = c("Deer Pit Playground","Arsenal Playground","Baxter Playground","Arlington Playground")),
       
-      selectInput("NeighborhoodSelect",
-                  "neighborhood:",
-                  choices = playG_neighborhood,
+      selectInput("MaintenanceResponsSelect",
+                  "Maintenance Responsibility:",
+                  choices = playG_maintenance,
                   multiple = TRUE,
                   selectize = TRUE,
-                  selected = c("South Side Slopes","Brookline","Strip District")),
+                  selected = c("Parks - Eastern","Parks - Northeast","Parks - Northern","Parks - Southern")),
       
       sliderInput("WardAmountSelect",
                   "ward amount:",
@@ -82,10 +70,12 @@ ui <- fluidPage(
                   value = c(min(as.numeric(playG_ward), na.rm = T), max(as.numeric(playG_ward), na.rm = T)),
                   step = 1),
       
-      checkboxGroupInput("PoliceZoneSelect",
-                         "police zone:",
-                         choices = interM_policeZ,
-                         selected = c("3", "4")),
+      selectInput("TypeSelect",
+                  "type:",
+                  levels(interM_load$type),
+                  selected = c("Stop Line", "Crosswalk - Two Lined"),
+                  selectize = T,
+                  multiple = T),
       
       actionButton("reset", "Reset Filters", icon = icon("refresh"))
     ),
@@ -93,13 +83,17 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel("Plot",
-                 plotlyOutput("barplot"),
                  plotlyOutput("boxplot"),
                  plotlyOutput("pointsplot"),
                  leafletOutput("map")
         ),
         tabPanel("Table",
-                 DT::dataTableOutput("table"))
+                 fluidPage(
+                   wellPanel(DT::dataTableOutput("table")),
+                   wellPanel(downloadButton("file.download", label = "Download chosen File"))
+                 )
+                )
+        
       )
     )
   )
@@ -111,11 +105,19 @@ server <- function(input, output, session = session) {
   PGInput <- reactive({
     
     #Build API Query with proper encodes
-    #Build API Query with proper encodes
     #Load and clean data
-    url_1 <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22%20WHERE%20%22name%22%20IN%20(27%",paste(input$ParkNameSelect,collapse = "27%,27%"),"27%)",
-    "%27%20AND%20%22ward%22%20%3E%3D",input$WardAmountSelect[1], "%20AND%20%22amount%22%20%3C%3D", input$WardAmountSelect[2],"%20;") #https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22
+    #https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22
     ###
+    PlaygroundName_filter <- ifelse(length(input$PlaygroundNameSelect) > 0, 
+                              paste0("%20AND%20%22name%22%20IN%20(%27", paste0(gsub(" " ,"%20", input$PlaygroundNameSelect), collapse = "%27,%27"), "%27)"), "")
+    
+    Maintenance_filter <- ifelse(length(input$MaintenanceResponsSelect) > 0, 
+                              paste0("%20AND%20%22maintenance_responsibility%22%20IN%20(%27", paste0(gsub(" " ,"%20", input$MaintenanceResponsSelect), collapse = "%27,%27"), "%27)"), "")
+    
+    url_1 <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22%20WHERE%20%22ward%22%20%3E=%20%27", 
+                    input$WardAmountSelect[1], "%27%20AND%20%22ward%22%20%3C=%20%27", input$WardAmountSelect[2], "%27",PlaygroundName_filter,Maintenance_filter)
+    
+    
     playG <- ckanSQL(url_1) 
     
     return(playG)
@@ -124,17 +126,24 @@ server <- function(input, output, session = session) {
   IMInput <- reactive({
     
     #url_2<- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22f86f1950-3b73-46f9-8bd4-2991ea99d7c4%22")
-
-    interM <- readOGR("https://data.wprdc.org/dataset/31ce085b-87b9-4ffd-adbb-0a9f5b3cf3df/resource/f86f1950-3b73-46f9-8bd4-2991ea99d7c4/download/markingsimg.geojson") 
     
+    #interM_load <- readOGR("https://data.wprdc.org/dataset/31ce085b-87b9-4ffd-adbb-0a9f5b3cf3df/resource/f86f1950-3b73-46f9-8bd4-2991ea99d7c4/download/markingsimg.geojson") 
+    interM <- interM_load
+    if (length(input$TypeSelect > 0)) {
+      interM <- subset(interM, type %in% input$TypeSelect)
+    }
     return(interM)
   })
   
+  
+  
   # Output Map
   output$map <- renderLeaflet({
+    interM <- interM_load
     sp1 <- PGInput()
     sp2 <- IMInput()
-    
+    # # Create a color palatte
+    # pal5 <- colorFactor(palette = c( "#E41A1C","#377EB8","#4DAF4A","#984EA3","#FF7F00","#FFFF33"),domain = interM_load$type)
     #Call Data and Build Map
     leaflet() %>%
       #create basemaps, the OpenStreet Map and the BalckAndWhite Map, and then create bottoms for choosing between two maps
@@ -145,50 +154,40 @@ server <- function(input, output, session = session) {
       #Add polygons for Pttsburgh playgrounds
       addMarkers(data = sp1,
                  lng = ~longitude,
-                 lat = ~latitude) %>%
+                 lat = ~latitude,
+                 popup = ~paste0("<b>", neighborhood, "<b>", park, "</b>: ", name) ) %>%
       #Add lines for intersction markings in Pittsburgh
       addPolylines(data = sp2, color = ~ pal5(type)) %>%
       #Add legends for types of intersection markings
       addLegend(position = "bottomright" , pal = pal5, values = interM$type, title = "Type") %>%
-      
-      #Add points depicting water features in Pittsburgh
-      #addMarkers(data = sp2) %>%
-      #Add legends for types of intersection markings
-      # addLegend(position = "bottomright" , pal = pal5, values = interM.load$type, title = "Type") %>%
       setView(-80, 40.45, 12)
    })
 
   
-  
   # Three bars are showing the number of the three chosen parks
-  output$barplot <- renderPlotly({
+  output$pointsplot <- renderPlotly({
     playG <- PGInput()
     ggplotly(
-      ggplot(data = playG, aes(x = name, fill = as.factor(name))) + 
-        geom_bar() +
-        labs(x = "Park Names", title = "Barplot for Park Name") +
+      ggplot(data = playG, aes(x = name, y = ward), show.legend = T) + 
+        geom_point() +
+        theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C"),
+              axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C")) +
+        labs(x = "Playground Names", title = "Pointsplot for Park Name and Ward Numbers") +
         guides(color = FALSE))
   })
-  
+
   #Using box plots to show the distribution of the three chosen departments
   output$boxplot <- renderPlotly({
     playG <- PGInput()
     ggplotly(
-      ggplot(data = playG, aes(x = neighborhood, y = as.numeric(ward))) + 
+      ggplot(data = playG, aes(x = maintenance_responsibility, y = ward), show.legend = T) + 
+        theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C"),
+              axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C")) +
         geom_boxplot() +
-        labs(x = " Neighborhood", y = "Ward Amount", title = "Boxplot for Neighborhood and Ward") +
+        labs(x = "Maintenance Responbility", y = "Ward Amount", title = "Boxplot for Maintenance Responsibility and Ward") +
         guides(color = FALSE))
   })
   
-  # Using points plots to show the average amount of cost in each date
-  
-  output$pointsplot <- renderPlotly({
-    playG <- PGInput()
-    ggplotly(
-      ggplot(data = playG, aes(x = maintenance_responsibility, y = as.numeric(ward))) + 
-        labs(x = "Maintenance Responsibility", y = "Ward Amount", title = "Points Plot for Maintenance Responsibility and Ward Amounts") +
-        geom_point())
-  })
   
   
   
@@ -196,9 +195,10 @@ server <- function(input, output, session = session) {
   output$table <- DT::renderDataTable({
     playG <- PGInput()
     
-    subset(playG, select = c(name, neighborhood, ward))
-    subset(waterF, select = c(control_type))
+    subset(playG, select = c(name, maintenance_responsibility, ward))
+    
   })
+  
   # Updating the URL Bar
   observe({
     print(reactiveValuesToList(input))
@@ -210,18 +210,19 @@ server <- function(input, output, session = session) {
   # Download data in the datatable
   output$downloadData <- downloadHandler(
     filename = function() {
-      paste("cost-revenue-", Sys.Date(), ".csv", sep="")
+      paste("playground-intersection-", Sys.Date(), ".csv", sep="")
     },
     content = function(file) {
       write.csv(PGInput(), file)
     }
   )
+  
   # Reset Filter Data
   observeEvent(input$reset, {
-    updateSelectInput(session, "ParkNameSelect", selected = c("Arlington Playground","Bon Air Playground","Camp David Lawrence Playground"))
-    updateSelectInput(session, "NeighborhoodSelect", selected = c("South Side Slopes","Brighton Heights"))
+    updateSelectInput(session, "PlaygroundNameSelect", selected = c("Arlington Playground"))
+    updateSelectInput(session, "MaintenanceResponsSelect", selected = c("Parks - Eastern","Parks - Northeast","Parks - Northern","Parks - Southern"))
     updateSliderInput(session, "WardAmountSelect", value = c(min(ward, na.rm = T), max(ward, na.rm = T)))
-    updateCheckboxGroupInput(session, "ControlTypeSelect", selected = "ON/OFF")
+    updateSelectInput(session, "TypeSelect", selected = c("Stop Line"))
     showNotification("You have successfully reset the filters", type = "message")
   })
 }

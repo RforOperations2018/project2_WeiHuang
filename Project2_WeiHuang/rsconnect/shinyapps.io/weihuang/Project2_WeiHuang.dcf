@@ -1,0 +1,13 @@
+name: Project2_WeiHuang
+title: Project2_WeiHuang
+username:
+account: weihuang
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 523899
+bundleId: 1650758
+url: https://weihuang.shinyapps.io/Project2_WeiHuang/
+when: 1539919157.72636
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: 2fb96406-813e-4031-acfe-1a82e78dc33c.csv|cost_rev.csv|intersect.csv|playground.csv|water_feature.csv

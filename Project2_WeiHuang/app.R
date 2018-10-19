@@ -84,15 +84,19 @@ ui <- fluidPage(
       tabsetPanel(
         tabPanel("Plot",
                  plotlyOutput("boxplot"),
-                 plotlyOutput("pointsplot"),
-                 leafletOutput("map")
+                 plotlyOutput("pointsplot")
         ),
+        
+        tabPanel("Map",
+                 leafletOutput("map")),
+        
         tabPanel("Table",
                  fluidPage(
                    wellPanel(DT::dataTableOutput("table")),
-                   wellPanel(downloadButton("file.download", label = "Download chosen File"))
+                   wellPanel(downloadButton("downloadData", label = "Download chosen File"))
                  )
                 )
+
         
       )
     )
@@ -115,8 +119,8 @@ server <- function(input, output, session = session) {
                               paste0("%20AND%20%22maintenance_responsibility%22%20IN%20(%27", paste0(gsub(" " ,"%20", input$MaintenanceResponsSelect), collapse = "%27,%27"), "%27)"), "")
     
     url_1 <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22%20WHERE%20%22ward%22%20%3E=%20%27", 
-                    input$WardAmountSelect[1], "%27%20AND%20%22ward%22%20%3C=%20%27", input$WardAmountSelect[2], "%27",PlaygroundName_filter,Maintenance_filter)
-    
+                    input$WardAmountSelect[1], "%27%20AND%20%22ward%22%20%3C=%20%27", input$WardAmountSelect[2], "%27", PlaygroundName_filter, Maintenance_filter)
+    print(url_1)
     
     playG <- ckanSQL(url_1) 
     
@@ -143,7 +147,6 @@ server <- function(input, output, session = session) {
     sp1 <- PGInput()
     sp2 <- IMInput()
     # # Create a color palatte
-    # pal5 <- colorFactor(palette = c( "#E41A1C","#377EB8","#4DAF4A","#984EA3","#FF7F00","#FFFF33"),domain = interM_load$type)
     #Call Data and Build Map
     leaflet() %>%
       #create basemaps, the OpenStreet Map and the BalckAndWhite Map, and then create bottoms for choosing between two maps
@@ -168,10 +171,11 @@ server <- function(input, output, session = session) {
   output$pointsplot <- renderPlotly({
     playG <- PGInput()
     ggplotly(
-      ggplot(data = playG, aes(x = name, y = ward), show.legend = T) + 
+      ggplot(data = playG, aes(x = name, y = ward, fill = name, colour = name), show.legend = T) + 
         geom_point() +
         theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C"),
               axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C")) +
+        scale_fill_brewer(palette = "Set1") +
         labs(x = "Playground Names", title = "Pointsplot for Park Name and Ward Numbers") +
         guides(color = FALSE))
   })
@@ -180,10 +184,11 @@ server <- function(input, output, session = session) {
   output$boxplot <- renderPlotly({
     playG <- PGInput()
     ggplotly(
-      ggplot(data = playG, aes(x = maintenance_responsibility, y = ward), show.legend = T) + 
+      ggplot(data = playG, aes(x = maintenance_responsibility, y = ward, colour = maintenance_responsibility), show.legend = T) + 
         theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C"),
               axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C")) +
         geom_boxplot() +
+        scale_fill_brewer(palette = "Set1") +
         labs(x = "Maintenance Responbility", y = "Ward Amount", title = "Boxplot for Maintenance Responsibility and Ward") +
         guides(color = FALSE))
   })

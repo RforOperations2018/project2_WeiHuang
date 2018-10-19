@@ -105,33 +105,27 @@ ui <- fluidPage(
 
 # Define server logic
 server <- function(input, output, session = session) {
-  # Filtered cost and revenue data
+  #Build API Query for Playground
   PGInput <- reactive({
-    
-    #Build API Query with proper encodes
-    #Load and clean data
-    #https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22
-    ###
+    #Taken data from API :https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22
+    #Build an api filter for playground name
     PlaygroundName_filter <- ifelse(length(input$PlaygroundNameSelect) > 0, 
                               paste0("%20AND%20%22name%22%20IN%20(%27", paste0(gsub(" " ,"%20", input$PlaygroundNameSelect), collapse = "%27,%27"), "%27)"), "")
     
+    #Build an api filter for Maintenance Responsibility
     Maintenance_filter <- ifelse(length(input$MaintenanceResponsSelect) > 0, 
                               paste0("%20AND%20%22maintenance_responsibility%22%20IN%20(%27", paste0(gsub(" " ,"%20", input$MaintenanceResponsSelect), collapse = "%27,%27"), "%27)"), "")
     
     url_1 <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22%20WHERE%20%22ward%22%20%3E=%20%27", 
-                    input$WardAmountSelect[1], "%27%20AND%20%22ward%22%20%3C=%20%27", input$WardAmountSelect[2], "%27", PlaygroundName_filter, Maintenance_filter)
-    print(url_1)
+                    input$WardAmountSelect[1], "%27%20AND%20%22ward%22%20%3C=%20%27", input$WardAmountSelect[2], "%27",PlaygroundName_filter,Maintenance_filter)
     
     playG <- ckanSQL(url_1) 
     
     return(playG)
   })
   
+  #Build API Query for Intersection Markings
   IMInput <- reactive({
-    
-    #url_2<- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%22f86f1950-3b73-46f9-8bd4-2991ea99d7c4%22")
-    
-    #interM_load <- readOGR("https://data.wprdc.org/dataset/31ce085b-87b9-4ffd-adbb-0a9f5b3cf3df/resource/f86f1950-3b73-46f9-8bd4-2991ea99d7c4/download/markingsimg.geojson") 
     interM <- interM_load
     if (length(input$TypeSelect > 0)) {
       interM <- subset(interM, type %in% input$TypeSelect)
@@ -140,13 +134,11 @@ server <- function(input, output, session = session) {
   })
   
   
-  
   # Output Map
   output$map <- renderLeaflet({
     interM <- interM_load
     sp1 <- PGInput()
     sp2 <- IMInput()
-    # # Create a color palatte
     #Call Data and Build Map
     leaflet() %>%
       #create basemaps, the OpenStreet Map and the BalckAndWhite Map, and then create bottoms for choosing between two maps
@@ -167,7 +159,7 @@ server <- function(input, output, session = session) {
    })
 
   
-  # Three bars are showing the number of the three chosen parks
+  # Creating points plot for name
   output$pointsplot <- renderPlotly({
     playG <- PGInput()
     ggplotly(

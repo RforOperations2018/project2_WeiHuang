@@ -23,7 +23,7 @@ ckanSQL <- function(url) {
 }
 
 pdf(NULL)
-# 
+
 # Unique values for Resource Field
   ckanUniques <- function(id, field) {
     url <- paste0("https://data.wprdc.org/api/action/datastore_search_sql?sql=SELECT%20DISTINCT(%22", field, "%22)%20from%20%22", id, "%22")

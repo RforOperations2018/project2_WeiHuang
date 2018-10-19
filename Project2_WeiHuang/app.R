@@ -9,7 +9,11 @@ library(rgdal)
 library(leaflet)
 library(shinythemes)
 library(plotly)
+library(ckanr)
 
+# Set data.wprdc.org as the default URL.
+ckanr_setup(url = "https://data.wprdc.org/") 
+url <- get_default_url()
 
 ckanSQL <- function(url) {
   # Make the Request
@@ -54,7 +58,7 @@ ui <- fluidPage(
                   choices =  playG_name,
                   multiple = TRUE,
                   selectize = TRUE,
-                  selected = c("Deer Pit Playground","Arsenal Playground","Baxter Playground","Arlington Playground")),
+                  selected = c("Deer Pit Playground","Arsenal Playground","Baxter Playground","Arlington Playground","Armstrong Playground","Brookline Playground","Dallas Playground")),
       
       selectInput("MaintenanceResponsSelect",
                   "Maintenance Responsibility:",
@@ -88,7 +92,9 @@ ui <- fluidPage(
         ),
         
         tabPanel("Map",
-                 leafletOutput("map")),
+                 tags$style(type = "text/css", ".leaflet {height: calc(100vh - 150px) !important;} body {background-color:#b3cde0;}"),
+                 leafletOutput("map")
+                 ),
         
         tabPanel("Table",
                  fluidPage(
@@ -110,14 +116,19 @@ server <- function(input, output, session = session) {
     #Taken data from API :https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22
     #Build an api filter for playground name
     PlaygroundName_filter <- ifelse(length(input$PlaygroundNameSelect) > 0, 
-                              paste0("%20AND%20%22name%22%20IN%20(%27", paste0(gsub(" " ,"%20", input$PlaygroundNameSelect), collapse = "%27,%27"), "%27)"), "")
+                              paste0(" AND name IN ('", paste0(input$PlaygroundNameSelect, collapse = "','"), "')"), "")
     
     #Build an api filter for Maintenance Responsibility
     Maintenance_filter <- ifelse(length(input$MaintenanceResponsSelect) > 0, 
-                              paste0("%20AND%20%22maintenance_responsibility%22%20IN%20(%27", paste0(gsub(" " ,"%20", input$MaintenanceResponsSelect), collapse = "%27,%27"), "%27)"), "")
+                              paste0(" AND maintenance_responsibility IN ('", paste0(gsub(" " ," ", input$MaintenanceResponsSelect), collapse = "','"), "')"), "")
+
+    url_1 = paste0('https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT * FROM "47350364-44a8-4d15-b6e0-5f79ddff9367" WHERE (CAST("ward" as integer) BETWEEN ', input$WardAmountSelect[1], ' AND ', input$WardAmountSelect[2], ")", PlaygroundName_filter, Maintenance_filter)
     
-    url_1 <- paste0("https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2247350364-44a8-4d15-b6e0-5f79ddff9367%22%20WHERE%20%22ward%22%20%3E=%20%27", 
-                    input$WardAmountSelect[1], "%27%20AND%20%22ward%22%20%3C=%20%27", input$WardAmountSelect[2], "%27",PlaygroundName_filter,Maintenance_filter)
+    url_1 <- gsub("'", "%27", url_1) # Replace ' with %27 
+    url_1 <- gsub('"', "%22", url_1)
+    url_1 <- gsub(" ", "%20", url_1) # Replace space with % 20
+    
+    print(url_1)
     
     playG <- ckanSQL(url_1) 
     
@@ -165,9 +176,9 @@ server <- function(input, output, session = session) {
     ggplotly(
       ggplot(data = playG, aes(x = name, y = ward, fill = name, colour = name), show.legend = T) + 
         geom_point() +
-        theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C"),
-              axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C")) +
-        scale_fill_brewer(palette = "Set1") +
+        theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#6497b1"),
+              axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#6497b1")) +
+        scale_fill_brewer(palette = "Set3") +
         labs(x = "Playground Names", title = "Pointsplot for Park Name and Ward Numbers") +
         guides(color = FALSE))
   })
@@ -177,10 +188,10 @@ server <- function(input, output, session = session) {
     playG <- PGInput()
     ggplotly(
       ggplot(data = playG, aes(x = maintenance_responsibility, y = ward, colour = maintenance_responsibility), show.legend = T) + 
-        theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C"),
-              axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#E41A1C")) +
+        theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#6497b1"),
+              axis.text.y = element_text(face = "bold", angle = 45, hjust = 0, vjust = 1, color = "#6497b1")) +
         geom_boxplot() +
-        scale_fill_brewer(palette = "Set1") +
+        scale_fill_brewer(palette = "Set3") +
         labs(x = "Maintenance Responbility", y = "Ward Amount", title = "Boxplot for Maintenance Responsibility and Ward") +
         guides(color = FALSE))
   })

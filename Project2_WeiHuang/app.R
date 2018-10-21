@@ -92,7 +92,7 @@ ui <- fluidPage(
         ),
         
         tabPanel("Map",
-                 tags$style(type = "text/css", ".leaflet {height: calc(100vh - 150px) !important;} body {background-color:#b3cde0;}"),
+                 tags$style(type = "text/css", ".leaflet {height: calc(100vh - 150px) !important;} body {background-color:#b3cde0;}"), # Maybe would have used a different theme or color here since the tab names are pretty similar in color when tey're not selected.
                  leafletOutput("map")
                  ),
         
@@ -120,7 +120,7 @@ server <- function(input, output, session = session) {
     
     #Build an api filter for Maintenance Responsibility
     Maintenance_filter <- ifelse(length(input$MaintenanceResponsSelect) > 0, 
-                              paste0(" AND maintenance_responsibility IN ('", paste0(gsub(" " ," ", input$MaintenanceResponsSelect), collapse = "','"), "')"), "")
+                              paste0(" AND maintenance_responsibility IN ('", paste0(gsub(" " ," ", input$MaintenanceResponsSelect), collapse = "','"), "')"), "") # This gsub isn't actually doing anything, and is a bit irrelevant because of your line 129. Still works, just a bit strange
 
     url_1 = paste0('https://data.wprdc.org/api/3/action/datastore_search_sql?sql=SELECT * FROM "47350364-44a8-4d15-b6e0-5f79ddff9367" WHERE (CAST("ward" as integer) BETWEEN ', input$WardAmountSelect[1], ' AND ', input$WardAmountSelect[2], ")", PlaygroundName_filter, Maintenance_filter)
     
